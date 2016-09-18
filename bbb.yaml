@@ -7,10 +7,16 @@ parameters:
      # type: string
   key_name:
      type: string
+     label: Nombre de la llave privada
+     description: Nombre de la llave privada para usar en la maquina virtual
   flavor:
      type: string
+     label: Nombre del sabor
+     description: Nombre del sabor para la maquina virtual
   image:
      type: string
+     label: Nombre de la imagen de disco
+     description: Nombre de la imagen de disco para iniciar la maquina virtual
   private_net:
      type: string
      label: Nombre de la red privada
