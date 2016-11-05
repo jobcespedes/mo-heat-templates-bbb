@@ -4,23 +4,27 @@ description: >
 
 parameters:
   # bbb_name:
-     # type: string
+    # type: string
   key_name:
-     type: string
-     label: Nombre de la llave privada
-     description: Nombre de la llave privada para usar en la maquina virtual
+    type: string
+    label: Nombre de la llave privada
+    description: Nombre de la llave privada para usar en la maquina virtual
   flavor:
-     type: string
-     label: Nombre del sabor
-     description: Nombre del sabor para la maquina virtual
+    type: string
+    label: Nombre del sabor
+    description: Nombre del sabor para la maquina virtual
   image:
-     type: string
-     label: Nombre de la imagen de disco
-     description: Nombre de la imagen de disco para iniciar la maquina virtual
+    type: string
+    label: Nombre de la imagen de disco
+    description: Nombre de la imagen de disco para iniciar la maquina virtual
   private_net:
-     type: string
-     label: Nombre de la red privada
-     description: Nombre de la red privada o su ID
+    type: string
+    label: Nombre de la red privada
+    description: Nombre de la red privada o su ID
+  public_net:
+    type: string
+    label: Nombre de la red pública
+    description: Nombre de la red pública o su ID
 
 resources:
   bbb-server:
@@ -31,6 +35,7 @@ resources:
       image: {get_param: image}
       flavor: {get_param: flavor}
       networks:
+        - network: {get_param: public_net}
         - network: {get_param: private_net}
       metadata:
         layer: "bbb"
@@ -221,12 +226,16 @@ resources:
       config: {get_resource: init}
       server: {get_resource: bbb-server}
       input_values:
-         bbb_ip: {get_attr: [bbb-server, networks, {get_param: private_net}, 0]}
+         bbb_ip: {get_attr: [bbb-server, networks, {get_param: public_net}, 0]}
 
 outputs:
-  first_ip:
+  public_ip:
     description: >
-      IP de instancia
+      IP pública de la instancia
+    value: {get_attr: [bbb-server, networks, {get_param: public_net}, 0]}
+  private_ip:
+    description: >
+      IP privada de la instancia
     value: {get_attr: [bbb-server, networks, {get_param: private_net}, 0]}
   name:
     description: >
