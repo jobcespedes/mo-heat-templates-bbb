@@ -24,6 +24,15 @@ parameters:
     type: string
     label: Nombre de la red pública
     description: Nombre de la red pública o su ID
+  security_groups:
+    type: comma_delimited_list
+    label: Lista de grupos de seguridad
+    description: Lista separada por comas para grupos de seguridad
+    default: "default,bbb"
+  bbb_domain:
+    type: string
+    label: Dominio de VM
+    description: Dominio de VM
 
 resources:
   bbb-server:
@@ -33,6 +42,7 @@ resources:
       key_name: {get_param: key_name}
       image: {get_param: image}
       flavor: {get_param: flavor}
+      security_groups: {get_param: security_groups}
       networks:
         - network: {get_param: public_net}
         - network: {get_param: private_net}
@@ -64,6 +74,8 @@ resources:
         default: No
       - name: bbb_ip
         description: IP del nodo de BBB
+      - name: bbb_domain
+        description: Dominio de VMs
       outputs:
       - name: bbb_url
         description: URL de conexión a BBB
@@ -77,14 +89,21 @@ resources:
         echo "${bbb_ip} $(hostname)" >> /etc/hosts
         HOST=${bbb_ip}
 
-        if ! [ -z ${bbb_host+x} ]; then
+        if ! [ -z ${bbb_domain+x} ]; then
+          bbb_host="bbb${bbb_ip##*.}.${bbb_domain}"
           echo "${bbb_ip} ${bbb_host}" >> /etc/hosts
-          HOST=${bbb_ip}
+          sed -i "s@multiversa.ucr.ac.cr@${bbb_domain}@" /etc/nginx/sites-available/bigbluebutton
+          HOST=${bbb_host}
         fi
 
         # Asignar llave compartida y devolver como parametro
         if ! [[ ${shared_key_in} == "False" ]]; then
             bbb-conf --setsecret ${shared_key_in}
+        fi
+
+        # Instalar demo si es requerido
+        if ! [[ ${is_bbb_demo} == "False" ]]; then
+            DEBIAN_FRONTEND=noninteractive apt -y install bbb-demo
         fi
 
         # Eliminar perfiles ipv6 de freesweitch (solo ipv4)
@@ -274,14 +293,8 @@ resources:
         systemctl $action $BBB_SERVICES $HTML5 $WEBHOOKS
 
         # Devolver url y llave compartida
-        if ! [[ ${is_bbb_demo} == "False" ]]; then
-            DEBIAN_FRONTEND=noninteractive apt -y install bbb-demo
-            echo "$PROTOCOL://$HOST" > ${heat_outputs_path}.bbb_url
-            bbb-conf --secret | grep -i secret: | awk '{print $2}' > ${heat_outputs_path}.shared_key_out
-        else
-          bbb-conf --secret | grep -i url: | awk '{print $2}' > ${heat_outputs_path}.bbb_url
-          bbb-conf --secret | grep -i secret: | awk '{print $2}' > ${heat_outputs_path}.shared_key_out
-        fi
+        bbb-conf --secret | grep -i url: | awk '{print $2}' > ${heat_outputs_path}.bbb_url
+        bbb-conf --secret | grep -i secret: | awk '{print $2}' > ${heat_outputs_path}.shared_key_out
 
   bbb-server-init:
     type: OS::Heat::SoftwareDeployment
@@ -292,6 +305,7 @@ resources:
       input_values:
          bbb_ip: {get_attr: [bbb-server, networks, {get_param: public_net}, 0]}
          is_bbb_demo: {get_param: bbb_demo}
+         bbb_domain: {get_param: bbb_domain}
 
 
 outputs:
