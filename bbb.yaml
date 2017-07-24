@@ -282,7 +282,7 @@ resources:
 
         # Instalar demo si es requerido
         if ! [[ ${is_bbb_demo} == "False" ]]; then
-            DEBIAN_FRONTEND=noninteractive apt-get -y install bbb-demo
+            DEBIAN_FRONTEND=noninteractive apt-get -y install bbb-demo bbb-check
             if [ -f ${SERVLET_DIR}/demo/bbb_api_conf.jsp ]; then
               sed -i "s@^String BigBlueButtonURL.*@String BigBlueButtonURL = \"https://${HOST}/bigbluebutton/\";@" ${SERVLET_DIR}/demo/bbb_api_conf.jsp
             else
