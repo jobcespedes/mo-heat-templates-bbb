@@ -92,18 +92,14 @@ resources:
         if ! [ -z ${bbb_domain+x} ]; then
           bbb_host="bbb${bbb_ip##*.}.${bbb_domain}"
           echo "${bbb_ip} ${bbb_host}" >> /etc/hosts
-          sed -i "s@multiversa.ucr.ac.cr@${bbb_domain}@" /etc/nginx/sites-available/bigbluebutton
+          sed -i "s@ssl_certificate /etc/nginx/ssl/.*@ssl_certificate /etc/nginx/ssl/fullchain.pem;@" /etc/nginx/sites-available/bigbluebutton
+          sed -i "s@ssl_certificate_key /etc/nginx/ssl/.*@ssl_certificate_key /etc/nginx/ssl/bbb.${bbb_domain}.key;@" /etc/nginx/sites-available/bigbluebutton
           HOST=${bbb_host}
         fi
 
         # Asignar llave compartida y devolver como parametro
         if ! [[ ${shared_key_in} == "False" ]]; then
             bbb-conf --setsecret ${shared_key_in}
-        fi
-
-        # Instalar demo si es requerido
-        if ! [[ ${is_bbb_demo} == "False" ]]; then
-            DEBIAN_FRONTEND=noninteractive apt -y install bbb-demo
         fi
 
         # Eliminar perfiles ipv6 de freesweitch (solo ipv4)
@@ -187,6 +183,8 @@ resources:
         echo "Assigning $HOST for publishURI in /var/www/bigbluebutton/client/conf/config.xml"
         sed -i "s/publishURI=\"[^\"]*\"/publishURI=\"$HOST\"/" /var/www/bigbluebutton/client/conf/config.xml
 
+        sed -i "s@    <bwMon server=.*@    <bwMon server=\"${HOST}\" application=\"video/bwTest\"/>@" /var/www/bigbluebutton/client/conf/config.xml
+
         #
         # Update configuration for BigBlueButton web app
         #
@@ -222,17 +220,6 @@ resources:
           sed -i "s/sharedSecret[ ]*=[ ]*\"[^\"]*\"/sharedSecret=\"$SECRET\"/g" \
             /usr/share/bbb-apps-akka/conf/application.conf
         fi
-
-        #
-        # Update api demos
-        #
-
-        if [ -f ${SERVLET_DIR}/demo/bbb_api_conf.jsp ]; then
-        	echo "Assigning $HOST for api demos in ${SERVLET_DIR}/demo/bbb_api_conf.jsp"
-        	sed -i "s/BigBlueButtonURL = \"http[s]*:\/\/\([^\"\/]*\)\([\"\/]\)/BigBlueButtonURL = \"$PROTOCOL_HTTP:\/\/$HOST\2/g" \
-        		${SERVLET_DIR}/demo/bbb_api_conf.jsp
-        fi
-
 
         if [ -f ${SERVLET_DIR}/lti/WEB-INF/classes/lti-config.properties ]; then
         	echo "Assigning $HOST for LTI integration in ${SERVLET_DIR}/lti/WEB-INF/classes/lti-config.properties"
@@ -291,6 +278,20 @@ resources:
         fi
         action=restart
         systemctl $action $BBB_SERVICES $HTML5 $WEBHOOKS
+        # bbb-conf --clean
+
+        # Instalar demo si es requerido
+        if ! [[ ${is_bbb_demo} == "False" ]]; then
+            DEBIAN_FRONTEND=noninteractive apt-get -y install bbb-demo
+            if [ -f ${SERVLET_DIR}/demo/bbb_api_conf.jsp ]; then
+              sed -i "s@^String BigBlueButtonURL.*@String BigBlueButtonURL = \"https://${HOST}/bigbluebutton/\";@" ${SERVLET_DIR}/demo/bbb_api_conf.jsp
+            else
+              sleep 30
+              sed -i "s@^String BigBlueButtonURL.*@String BigBlueButtonURL = \"https://${HOST}/bigbluebutton/\";@" ${SERVLET_DIR}/demo/bbb_api_conf.jsp
+            fi
+            systemctl $action $BBB_SERVICES $HTML5 $WEBHOOKS
+            # bbb-conf --clean
+        fi
 
         # Devolver url y llave compartida
         bbb-conf --secret | grep -i url: | awk '{print $2}' > ${heat_outputs_path}.bbb_url
