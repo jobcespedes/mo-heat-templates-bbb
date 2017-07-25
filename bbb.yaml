@@ -1,6 +1,6 @@
 heat_template_version: 2014-10-16
 description: >
-  Plantilla de orquestación para configurar servidor de BBB. Se debe utilizar una imagen con BBB previamente instalado. La plantilla devuelve la url y la llave compartida de BBB. Para la configuración se utiliza parte del código de bbb-conf.
+  Plantilla de orquestacion para configurar servidor de BBB. Se debe utilizar una imagen con BBB previamente instalado. La plantilla devuelve la url y la llave compartida de BBB. Para la configuracion se utiliza parte del codigo de bbb-conf.
 
 parameters:
   # bbb_name:
@@ -22,8 +22,8 @@ parameters:
     description: Nombre de la red privada o su ID
   public_net:
     type: string
-    label: Nombre de la red pública
-    description: Nombre de la red pública o su ID
+    label: Nombre de la red publica
+    description: Nombre de la red publica o su ID
   security_groups:
     type: comma_delimited_list
     label: Lista de grupos de seguridad
@@ -78,7 +78,7 @@ resources:
         description: Dominio de VMs
       outputs:
       - name: bbb_url
-        description: URL de conexión a BBB
+        description: URL de conexion a BBB
       - name: shared_key_out
         description: Llave compartida de BBB
       config: |
@@ -106,7 +106,7 @@ resources:
         rm -rf /opt/freeswitch/etc/freeswitch/sip_profiles/*ipv6*
         sed -i "s@.*<param name=\"listen-ip\"@    <param name=\"listen-ip\" value=\"127.0.0.1\"/>@" /opt/freeswitch/etc/freeswitch/autoload_configs/event_socket.conf.xml
 
-        # Actualizar IP y reiniciar servicios. En caso de estar detras de un balanceador acá debería ir el dns del frontend
+        # Actualizar IP y reiniciar servicios. En caso de estar detras de un balanceador aca deberia ir el dns del frontend
         ###################### Segmento de /usr/bin/bbb-conf ##################################
         # BlueButton open source conferencing system - http://www.bigbluebutton.org/
         #
@@ -312,7 +312,7 @@ resources:
 outputs:
   public_ip:
     description: >
-      IP pública de la instancia
+      IP publica de la instancia
     value: {get_attr: [bbb-server, networks, {get_param: public_net}, 0]}
   private_ip:
     description: >
@@ -324,7 +324,7 @@ outputs:
     value: {get_attr: [bbb-server, name]}
   bbb_url:
     description: >
-      URL de conexión a API de BBB
+      URL de conexion a API de BBB
     value: {get_attr: [bbb-server-init, bbb_url]}
   bbb_shared_key:
     description: >
