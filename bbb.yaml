@@ -90,7 +90,7 @@ resources:
         echo "${bbb_ip} $(hostname)" >> /etc/hosts
         HOST=${bbb_ip}
 
-        if ! [ -z ${bbb_domain+x} ]; then
+        if ! [[ -z ${bbb_domain+x} ]] && ! [[ -z ${bbb_domain} ]]; then
           bbb_host="bbb${bbb_ip##*.}.${bbb_domain}"
           echo "${bbb_ip} ${bbb_host}" >> /etc/hosts
           sed -i "s@ssl_certificate /etc/nginx/ssl/.*@ssl_certificate /etc/nginx/ssl/fullchain.pem;@" /etc/nginx/sites-available/bigbluebutton
