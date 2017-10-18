@@ -33,6 +33,7 @@ parameters:
     type: string
     label: Dominio de VM
     description: Dominio de VM
+    default: ""
 
 resources:
   bbb-server:
