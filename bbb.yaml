@@ -1,4 +1,4 @@
-heat_template_version: 2014-10-16
+heat_template_version: newton
 description: >
   Plantilla de orquestacion para configurar servidor de BBB. Se debe utilizar una imagen con BBB previamente instalado. La plantilla devuelve la url y la llave compartida de BBB. Para la configuracion se utiliza parte del codigo de bbb-conf.
 
@@ -33,6 +33,16 @@ parameters:
     type: string
     label: Dominio de VM
     description: Dominio de VM
+    default: ""
+  bbb_nfs_mount:
+    type: string
+    label: Punto de montaje NFS
+    description: Montaje NFS para grabaciones
+    default: ""
+  bbb_nfs_hostname:
+    type: string
+    label: Servidor para grabaciones
+    description: Nombre de servidor para grabaciones
     default: ""
 
 resources:
@@ -89,13 +99,33 @@ resources:
 
         echo "${bbb_ip} $(hostname)" >> /etc/hosts
         HOST=${bbb_ip}
+        bbb_playback_host=${bbb_ip}
 
+        # Configuración DNS
         if ! [[ -z ${bbb_domain+x} ]] && ! [[ -z ${bbb_domain} ]]; then
           bbb_host="bbb${bbb_ip##*.}.${bbb_domain}"
           echo "${bbb_ip} ${bbb_host}" >> /etc/hosts
           sed -i "s@ssl_certificate /etc/nginx/ssl/.*@ssl_certificate /etc/nginx/ssl/fullchain.pem;@" /etc/nginx/sites-available/bigbluebutton
           sed -i "s@ssl_certificate_key /etc/nginx/ssl/.*@ssl_certificate_key /etc/nginx/ssl/bbb.${bbb_domain}.key;@" /etc/nginx/sites-available/bigbluebutton
           HOST=${bbb_host}
+          bbb_playback_host=${HOST}
+        fi
+
+        # Configuración NFS para grabaciones
+        if ! [[ -z ${bbb_nfs_mount+x} ]] && ! [[ -z ${bbb_nfs_mount} ]]; then
+          apt-get update && apt-get install -y nfs-common
+          if ! [[ -z ${bbb_nfs_hostname+x} ]] && ! [[ -z ${bbb_nfs_hostname} ]]; then
+            echo "${bbb_ip} ${bbb_nfs_hostname} #bbb para grabaciones" >> /etc/hosts
+            mount ${bbb_nfs_mount}/published/ /var/bigbluebutton/published/
+            bbb_playback_host="${bbb_nfs_hostname}"
+          else
+            cp -rp /var/bigbluebutton/ /tmp
+            mount ${bbb_nfs_mount} /var/bigbluebutton/
+            chmod 755 -R /var/bigbluebutton/
+            chown tomcat7:tomcat7 -R /var/bigbluebutton/
+            cp -rp /tmp/bigbluebutton/* /var/bigbluebutton/
+            rm -rf /tmp/bigbluebutton
+          fi
         fi
 
         # Asignar llave compartida y devolver como parametro
@@ -129,7 +159,7 @@ resources:
         #       Fred Dixon <ffdixon@bigbluebutton.org>
         #       Sebastian Schneider <seb.sschneider@gmail.com>
         #       Ghazi Triki <ghazi.nocturne@gmail.com>
-        redis_host=${HOST}
+        redis_host="127.0.0.1"
         SERVLET_CONTAINER=tomcat7
         SERVLET_DIR=/var/lib/$SERVLET_CONTAINER/webapps
         FREESWITCH_VARS=/opt/freeswitch/conf/vars.xml
@@ -236,8 +266,8 @@ resources:
 
         if [ -f /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml ]; then
         	echo "Assigning $HOST for record and playback in /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml"
-        	change_yml_value /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml playback_host $HOST
-          change_yml_value /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml redis_host $redis_host
+        	change_yml_value /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml playback_host ${bbb_playback_host}
+          change_yml_value /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml redis_host ${redis_host}
         fi
 
         if [ -f /var/www/bigbluebutton/check/conf/config.xml ]; then
@@ -305,12 +335,18 @@ resources:
       config: {get_resource: init}
       server: {get_resource: bbb-server}
       input_values:
-         bbb_ip: {get_attr: [bbb-server, networks, {get_param: public_net}, 0]}
-         is_bbb_demo: {get_param: bbb_demo}
-         bbb_domain: {get_param: bbb_domain}
+        bbb_ip: {get_attr: [bbb-server, networks, {get_param: public_net}, 0]}
+        is_bbb_demo: {get_param: bbb_demo}
+        bbb_domain: {get_param: bbb_domain}
+        bbb_nfs_hostname: {get_param: bbb_nfs_hostname}
+        bbb_nfs_mount: {get_param: bbb_nfs_mount}
 
 
 outputs:
+  server:
+    description: >
+      Recurso para llamar instancia BBB.
+    value: {get_resource: bbb-server}
   public_ip:
     description: >
       IP publica de la instancia
