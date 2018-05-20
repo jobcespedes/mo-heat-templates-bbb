@@ -9,6 +9,11 @@ parameters:
     type: string
   nfs_image:
     type: string
+  nfs_server_name:
+    type: string
+    label: Nombre del servidor NFS
+    description: Nombre del servidor NFS
+    default: ""
   nfs_security_groups:
     type: comma_delimited_list
     label: Lista de grupos de seguridad
@@ -33,6 +38,11 @@ parameters:
     type: string
   bbb_image:
     type: string
+  bbb_server_name:
+    type: string
+    label: Nombre del servidor BBB
+    description: Nombre del servidor BBB
+    default: ""
   bbb_demo:
     type: string
     label: Cliente demo de BBB
@@ -61,7 +71,7 @@ resources:
   nfs-server:
     type: OS::Nova::Server
     properties:
-      name: bbb-nfs
+      name: {get_param: nfs_server_name}
       key_name: {get_param: key_name}
       image: {get_param: nfs_image}
       flavor: {get_param: nfs_flavor}
@@ -114,6 +124,7 @@ resources:
   bbb-server:
     type: bbb.yaml
     properties:
+      server_name: {get_param: bbb_server_name}
       key_name: {get_param: key_name}
       flavor: {get_param: bbb_flavor}
       image: {get_param: bbb_image}

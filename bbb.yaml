@@ -3,8 +3,11 @@ description: >
   Plantilla de orquestacion para configurar servidor de BBB. Se debe utilizar una imagen con BBB previamente instalado. La plantilla devuelve la url y la llave compartida de BBB. Para la configuracion se utiliza parte del codigo de bbb-conf.
 
 parameters:
-  # bbb_name:
-    # type: string
+  server_name:
+    type: string
+    label: Nombre del servidor BBB
+    description: Nombre del servidor BBB
+    default: ""
   key_name:
     type: string
   flavor:
@@ -49,7 +52,7 @@ resources:
   bbb-server:
     type: OS::Nova::Server
     properties:
-      # name: {get_param: bbb_name}
+      name: {get_param: server_name}
       key_name: {get_param: key_name}
       image: {get_param: image}
       flavor: {get_param: flavor}
