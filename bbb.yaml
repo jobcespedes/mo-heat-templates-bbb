@@ -104,7 +104,7 @@ resources:
         HOST=${bbb_ip}
         bbb_playback_host=${bbb_ip}
 
-        # Configuración DNS
+        # Configuracion DNS
         if ! [[ -z ${bbb_domain+x} ]] && ! [[ -z ${bbb_domain} ]]; then
           bbb_host="bbb${bbb_ip##*.}.${bbb_domain}"
           echo "${bbb_ip} ${bbb_host}" >> /etc/hosts
@@ -114,7 +114,7 @@ resources:
           bbb_playback_host=${HOST}
         fi
 
-        # Configuración NFS para grabaciones
+        # Configuracion NFS para grabaciones
         if ! [[ -z ${bbb_nfs_mount+x} ]] && ! [[ -z ${bbb_nfs_mount} ]]; then
           apt-get update && apt-get install -y nfs-common
           if ! [[ -z ${bbb_nfs_hostname+x} ]] && ! [[ -z ${bbb_nfs_hostname} ]]; then
