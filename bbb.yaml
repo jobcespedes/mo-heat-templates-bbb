@@ -42,7 +42,12 @@ parameters:
     label: Punto de montaje NFS
     description: Montaje NFS para grabaciones
     default: ""
-  bbb_nfs_hostname:
+  bbb_external_hostname:
+    type: string
+    label: Servidor externo BBB
+    description: Nombre de servidor externo BBB
+    default: ""
+  bbb_recording_hostname:
     type: string
     label: Servidor para grabaciones
     description: Nombre de servidor para grabaciones
@@ -106,7 +111,11 @@ resources:
 
         # Configuracion DNS
         if ! [[ -z ${bbb_domain+x} ]] && ! [[ -z ${bbb_domain} ]]; then
-          bbb_host="bbb${bbb_ip##*.}.${bbb_domain}"
+          if ! [[ -z ${bbb_external_hostname+x} ]] && ! [[ -z ${bbb_external_hostname} ]]; then
+            bbb_host="${bbb_external_hostname}"
+          else
+            bbb_host="bbb${bbb_ip##*.}.${bbb_domain}"
+          fi
           echo "${bbb_ip} ${bbb_host}" >> /etc/hosts
           sed -i "s@ssl_certificate /etc/nginx/ssl/.*@ssl_certificate /etc/nginx/ssl/fullchain.pem;@" /etc/nginx/sites-available/bigbluebutton
           sed -i "s@ssl_certificate_key /etc/nginx/ssl/.*@ssl_certificate_key /etc/nginx/ssl/bbb.${bbb_domain}.key;@" /etc/nginx/sites-available/bigbluebutton
@@ -122,12 +131,13 @@ resources:
         ## cp -rp /var/bigbluebutton/ /tmp/mnt/var/
         if ! [[ -z ${bbb_nfs_mount+x} ]] && ! [[ -z ${bbb_nfs_mount} ]]; then
           apt-get update && apt-get install -y nfs-common
-          if ! [[ -z ${bbb_nfs_hostname+x} ]] && ! [[ -z ${bbb_nfs_hostname} ]]; then
-            echo "${bbb_ip} ${bbb_nfs_hostname} #bbb para grabaciones" >> /etc/hosts
+          if ! [[ -z ${bbb_recording_hostname+x} ]] && ! [[ -z ${bbb_recording_hostname} ]]; then
+            echo "${bbb_ip} ${bbb_recording_hostname} #bbb para grabaciones" >> /etc/hosts
             mount ${bbb_nfs_mount}/var/bigbluebutton/published/ /var/bigbluebutton/published/
             mount ${bbb_nfs_mount}/var/bigbluebutton/unpublished/ /var/bigbluebutton/unpublished/
             mount ${bbb_nfs_mount}/var/bigbluebutton/recording/raw/ /var/bigbluebutton/recording/raw/
-            bbb_playback_host="${bbb_nfs_hostname}"
+            mount ${bbb_nfs_mount}/etc/nginx/ssl/ /etc/nginx/ssl/
+            bbb_playback_host="${bbb_recording_hostname}"
           else
             mkdir /tmp/mnt
             mount ${bbb_nfs_mount} /tmp/mnt
@@ -135,8 +145,13 @@ resources:
               mkdir -p /tmp/mnt/var
               cp -rp /var/bigbluebutton/ /tmp/mnt/var/
             fi
+            if [ ! -d "/tmp/mnt/etc/nginx/ssl/" ]; then
+              mkdir -p /tmp/mnt/etc/nginx/
+              cp -rp /etc/nginx/ssl/ /tmp/mnt/etc/nginx/
+            fi
             umount ${bbb_nfs_mount}
             mount ${bbb_nfs_mount}/var/bigbluebutton/ /var/bigbluebutton/
+            mount ${bbb_nfs_mount}/etc/nginx/ssl/ /etc/nginx/ssl/
           fi
         fi
 
@@ -350,8 +365,9 @@ resources:
         bbb_ip: {get_attr: [bbb-server, networks, {get_param: public_net}, 0]}
         is_bbb_demo: {get_param: bbb_demo}
         bbb_domain: {get_param: bbb_domain}
-        bbb_nfs_hostname: {get_param: bbb_nfs_hostname}
+        bbb_recording_hostname: {get_param: bbb_recording_hostname}
         bbb_nfs_mount: {get_param: bbb_nfs_mount}
+        bbb_external_hostname: {get_param: bbb_external_hostname}
 
 
 outputs:
