@@ -115,19 +115,26 @@ resources:
         fi
 
         # Configuracion NFS para grabaciones
+        # Manualmente debe existir el directorio /var/bigbluebutton/ en el NFS:
+        ## mkdir /tmp/mnt
+        ## mount ${bbb_nfs_mount} /tmp/mnt
+        ## mkdir /tmp/mnt/var
+        ## cp -rp /var/bigbluebutton/ /tmp/mnt/var/
         if ! [[ -z ${bbb_nfs_mount+x} ]] && ! [[ -z ${bbb_nfs_mount} ]]; then
           apt-get update && apt-get install -y nfs-common
           if ! [[ -z ${bbb_nfs_hostname+x} ]] && ! [[ -z ${bbb_nfs_hostname} ]]; then
             echo "${bbb_ip} ${bbb_nfs_hostname} #bbb para grabaciones" >> /etc/hosts
-            mount ${bbb_nfs_mount}/published/ /var/bigbluebutton/published/
+            mount ${bbb_nfs_mount}/var/bigbluebutton/published/ /var/bigbluebutton/published/
             bbb_playback_host="${bbb_nfs_hostname}"
           else
-            cp -rp /var/bigbluebutton/ /tmp
-            mount ${bbb_nfs_mount} /var/bigbluebutton/
-            chmod 755 -R /var/bigbluebutton/
-            chown tomcat7:tomcat7 -R /var/bigbluebutton/
-            cp -rp /tmp/bigbluebutton/* /var/bigbluebutton/
-            rm -rf /tmp/bigbluebutton
+            mkdir /tmp/mnt
+            mount ${bbb_nfs_mount} /tmp/mnt
+            if [ ! -d "/tmp/mnt/var/bigbluebutton/" ]; then
+              mkdir -p /tmp/mnt/var
+              cp -rp /var/bigbluebutton/ /tmp/mnt/var/
+            fi
+            umount ${bbb_nfs_mount}
+            mount ${bbb_nfs_mount}/var/bigbluebutton/ /var/bigbluebutton/
           fi
         fi
 
