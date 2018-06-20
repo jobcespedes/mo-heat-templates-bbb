@@ -125,6 +125,8 @@ resources:
           if ! [[ -z ${bbb_nfs_hostname+x} ]] && ! [[ -z ${bbb_nfs_hostname} ]]; then
             echo "${bbb_ip} ${bbb_nfs_hostname} #bbb para grabaciones" >> /etc/hosts
             mount ${bbb_nfs_mount}/var/bigbluebutton/published/ /var/bigbluebutton/published/
+            mount ${bbb_nfs_mount}/var/bigbluebutton/unpublished/ /var/bigbluebutton/unpublished/
+            mount ${bbb_nfs_mount}/var/bigbluebutton/recording/raw/ /var/bigbluebutton/recording/raw/
             bbb_playback_host="${bbb_nfs_hostname}"
           else
             mkdir /tmp/mnt
