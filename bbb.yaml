@@ -18,7 +18,7 @@ parameters:
     type: string
     label: Cliente demo de BBB
     description: Instalar cliente demo de BBB
-    default: No
+    default: ""
   private_net:
     type: string
     label: Nombre de la red privada
@@ -80,21 +80,10 @@ resources:
           # group: {Ref: haproxy_cluster}
       user_data_format: SOFTWARE_CONFIG
 
-  init:
+  sw-init:
     type: OS::Heat::SoftwareConfig
     properties:
       group: script
-      inputs:
-      - name: shared_key_in
-        description: Llave compartida de BBB
-        default: No
-      - name: is_bbb_demo
-        description: Instalar cliente bbb demo
-        default: No
-      - name: bbb_ip
-        description: IP del nodo de BBB
-      - name: bbb_domain
-        description: Dominio de VMs
       outputs:
       - name: bbb_url
         description: URL de conexion a BBB
@@ -105,9 +94,22 @@ resources:
         set -eu
         set -o pipefail
 
+        script=/usr/local/bin/bbb-heat
+
+        cat << "_EOF" > $script
+        #!/bin/bash -x
+        set -eu
+        set -o pipefail
+
+        # heat_vars
+
+        # init config
         echo "${bbb_ip} $(hostname)" >> /etc/hosts
-        HOST=${bbb_ip}
         bbb_playback_host=${bbb_ip}
+        HOST=${bbb_ip}
+        IP=${bbb_ip}
+        SERVLET_CONTAINER=tomcat7
+        SERVLET_DIR=/var/lib/$SERVLET_CONTAINER/webapps
 
         # Configuracion DNS
         if ! [[ -z ${bbb_domain+x} ]] && ! [[ -z ${bbb_domain} ]]; then
@@ -124,26 +126,20 @@ resources:
         fi
 
         # Configuracion NFS para grabaciones
-        # Manualmente debe existir el directorio /var/bigbluebutton/ en el NFS:
-        ## mkdir /tmp/mnt
-        ## mount ${bbb_nfs_mount} /tmp/mnt
-        ## mkdir /tmp/mnt/var
-        ## cp -rp /var/bigbluebutton/ /tmp/mnt/var/
-        if ! [[ -z ${bbb_nfs_mount+x} ]] && ! [[ -z ${bbb_nfs_mount} ]]; then
-          apt-get update && apt-get install -y nfs-common
-          if ! [[ -z ${bbb_recording_hostname+x} ]] && ! [[ -z ${bbb_recording_hostname} ]]; then
+        if ! [[ -z ${bbb_nfs_mount:-} ]]; then
+          if ! [[ -z ${bbb_recording_hostname:-} ]]; then
             echo "${bbb_ip} ${bbb_recording_hostname} #bbb para grabaciones" >> /etc/hosts
-            mount ${bbb_nfs_mount}/var/bigbluebutton/published/ /var/bigbluebutton/published/
+            mountpoint -q /var/bigbluebutton/published/ || mount ${bbb_nfs_mount}/var/bigbluebutton/published/ /var/bigbluebutton/published/
             chown tomcat7:tomcat7 -R /var/bigbluebutton/published/
-            mount ${bbb_nfs_mount}/var/bigbluebutton/unpublished/ /var/bigbluebutton/unpublished/
+            mountpoint -q /var/bigbluebutton/unpublished/ || mount ${bbb_nfs_mount}/var/bigbluebutton/unpublished/ /var/bigbluebutton/unpublished/
             chown tomcat7:tomcat7 -R /var/bigbluebutton/unpublished/
-            mount ${bbb_nfs_mount}/var/bigbluebutton/recording/raw/ /var/bigbluebutton/recording/raw/
-            chown tomcat7:tomcat7 -R /var/bigbluebutton/recording/raw/
-            mount ${bbb_nfs_mount}/etc/nginx/ssl/ /etc/nginx/ssl/
+            mountpoint -q /var/bigbluebutton/recording/raw/ || mount ${bbb_nfs_mount}/var/bigbluebutton/recording/raw/ /var/bigbluebutton/recording/raw/
+            chown tomcat7:tomcat7 /var/bigbluebutton/recording/raw/
+            mountpoint -q /etc/nginx/ssl/ || mount ${bbb_nfs_mount}/etc/nginx/ssl/ /etc/nginx/ssl/
             bbb_playback_host="${bbb_recording_hostname}"
           else
             mkdir /tmp/mnt
-            mount ${bbb_nfs_mount} /tmp/mnt
+            mountpoint -q /tmp/mnt || mount ${bbb_nfs_mount} /tmp/mnt
             if [ ! -d "/tmp/mnt/var/bigbluebutton/" ]; then
               mkdir -p /tmp/mnt/var
               cp -rp /var/bigbluebutton/ /tmp/mnt/var/
@@ -153,206 +149,115 @@ resources:
               cp -rp /etc/nginx/ssl/ /tmp/mnt/etc/nginx/
             fi
             umount ${bbb_nfs_mount}
-            mount ${bbb_nfs_mount}/var/bigbluebutton/ /var/bigbluebutton/
-            mount ${bbb_nfs_mount}/etc/nginx/ssl/ /etc/nginx/ssl/
+            mountpoint -q /var/bigbluebutton/ || mount ${bbb_nfs_mount}/var/bigbluebutton/ /var/bigbluebutton/
+            mountpoint -q /etc/nginx/ssl/ ||  ${bbb_nfs_mount}/etc/nginx/ssl/ /etc/nginx/ssl/
           fi
         fi
 
         # Asignar llave compartida y devolver como parametro
-        if ! [[ ${shared_key_in} == "False" ]]; then
+        if ! [[ -z ${shared_key_in:-} ]]; then
             bbb-conf --setsecret ${shared_key_in}
         fi
 
-        # Eliminar perfiles ipv6 de freesweitch (solo ipv4)
-        rm -rf /opt/freeswitch/etc/freeswitch/sip_profiles/*ipv6*
-        sed -i "s@.*<param name=\"listen-ip\"@    <param name=\"listen-ip\" value=\"127.0.0.1\"/>@" /opt/freeswitch/etc/freeswitch/autoload_configs/event_socket.conf.xml
-
         # Actualizar IP y reiniciar servicios. En caso de estar detras de un balanceador aca deberia ir el dns del frontend
-        ###################### Segmento de /usr/bin/bbb-conf ##################################
-        # BlueButton open source conferencing system - http://www.bigbluebutton.org/
-        #
-        # Copyright (c) 2012 BigBlueButton Inc. and by respective authors (see below).
-        #
-        # This program is free software; you can redistribute it and/or modify it under the
-        # terms of the GNU Lesser General Public License as published by the Free Software
-        # Foundation; either version 3.0 of the License, or (at your option) any later
-        # version.
-        #
-        # BigBlueButton is distributed in the hope that it will be useful, but WITHOUT ANY
-        # WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-        # PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
-        #
-        # You should have received a copy of the GNU Lesser General Public License along
-        # with BigBlueButton; if not, see <http://www.gnu.org/licenses/>.
-        #
-        # Author(s):
-        #       Fred Dixon <ffdixon@bigbluebutton.org>
-        #       Sebastian Schneider <seb.sschneider@gmail.com>
-        #       Ghazi Triki <ghazi.nocturne@gmail.com>
-        redis_host="127.0.0.1"
-        SERVLET_CONTAINER=tomcat7
-        SERVLET_DIR=/var/lib/$SERVLET_CONTAINER/webapps
-        FREESWITCH_VARS=/opt/freeswitch/conf/vars.xml
-        FREESWITCH_EXTERNAL=/opt/freeswitch/conf/sip_profiles/external.xml
-        TO_BACKUP="N"
-
-        if cat /var/www/bigbluebutton/client/conf/config.xml | grep "ChatModule" | grep -q https; then
-        	PROTOCOL_HTTP=https
-        	PROTOCOL_RTMP=rtmp
-        else
-        	PROTOCOL_HTTP=http
-        	PROTOCOL_RTMP=rtmp
+        # delete duplicate
+        file='/opt/freeswitch/conf/sip_profiles/external.xml'
+        if [[ $(grep -c 'wss-binding' $file ) > 1 ]]; then
+            sed '0,/wss/{//d;}' $file
         fi
-        check_and_backup () {
-        	# can we write to the configuration file?
-        	if [ ! -w $1 ]; then
-        		echo "Cannot write to $1!"
-        		exit 1
-        	fi
 
-        	# let's see if we need a copy
-        	if [ "$TO_BACKUP" = "Y" ]; then
-        		cp $1 $1.bak
-        		TO_BACKUP="N"
-        	fi
-        }
-        change_var_value () {
-        	check_and_backup $1
-        	sed -i "s<^[[:blank:]#]*\(${2}\).*<\1=${3}<" $1
-        }
-        change_yml_value () {
-          sed -i "s<^[[:blank:]#]*\(${2}\):[ ].*<\1: ${3}<" $1
-        }
-        #
-        # Just use the IP for port test in /var/www/bigbluebutton/client/conf/config.xml
-        #
-        echo "Assigning $HOST for testing for firewall in /var/www/bigbluebutton/client/conf/config.xml"
-        sed -i "s/porttest host=\(\"[^\"]*\"\)/porttest host=\"$HOST\"/g" /var/www/bigbluebutton/client/conf/config.xml
+        ## SET IP ##
+        TARGET=/usr/local/bigbluebutton/bbb-webrtc-sfu/config/default.yml
+        if [ -f $TARGET ]; then
+        yq w -i $TARGET kurento[0].ip "${IP}"
+        yq w -i $TARGET freeswitch.sip_ip "${IP}"
+        chown bigbluebutton:bigbluebutton $TARGET
+        chmod 644 $TARGET
+        fi
 
-        echo "Assigning $HOST for rtmp:// in /var/www/bigbluebutton/client/conf/config.xml"
-        sed -i "s/rtmp[s]*:\/\/\([^\"\/]*\)\([\"\/]\)/$PROTOCOL_RTMP:\/\/$HOST\2/g" /var/www/bigbluebutton/client/conf/config.xml
+        sed -i "s@local_ip_v4=.[^\"]*@local_ip_v4=${IP}@" /opt/freeswitch/etc/freeswitch/vars.xml
 
-        echo "Assigning $HOST for servername in /etc/nginx/sites-available/bigbluebutton"
+        sed -i \
+            -e "s@^bbb.sip.app.ip=.*@bbb.sip.app.ip=${IP}@" \
+            -e "s@^freeswitch.ip=.*@freeswitch.ip=${IP}@" \
+            /usr/share/red5/webapps/sip/WEB-INF/bigbluebutton-sip.properties
+
+        sed -i \
+            -e "s@wsUrl: ws.*://\([^\"\/]*\)\([\"\/]\)@wsUrl: wss://${HOST}\2@g" \
+            -e "s@url: http.*://\([^\"\/]*\)\([\"\/]\)@url: https://${HOST}\2@g" \
+            /usr/share/meteor/bundle/programs/server/assets/app/config/settings.yml
+
+        sed -i \
+            -e "s@ ip: .*@ ip: ${IP}@g" \
+            -e "s@^localIpAddress:.*@localIpAddress: ${IP}@" \
+            /usr/local/bigbluebutton/bbb-webrtc-sfu/config/default.yml
+
+        sed -i "s@^playback_protocol: http.*@playback_protocol: https@g" /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml
+
+        if ! [[ -z ${bbb_recording_hostname:-} ]]; then
+            sed -i "s@^playback_host:.*@playback_host: ${bbb_playback_host}@g" /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml
+        fi
+
+        sed -i "s@server_name.*@server_name ${HOST};@g" \
+            /etc/nginx/sites-available/bigbluebutton
+
+        sed -i "s@proxy_pass http.*@proxy_pass https://${IP}:7443;@g" \
+            /etc/bigbluebutton/nginx/sip.nginx
+
+        # from bbb-conf
+        sed -i \
+            -e "s@porttest host=(\"[^\"]*\")@porttest host=\"$HOST\"@g" \
+            -e "s@://\([^\"\/]*\)\([\"\/]\)@:\/\/$HOST\2@g" \
+            /var/www/bigbluebutton/client/conf/config.xml
+
         sed -i "s/server_name  .*/server_name  $HOST;/g" /etc/nginx/sites-available/bigbluebutton
 
-        #
-        # Update configuration for BigBlueButton client
-        #
-        echo "Assigning $HOST for http[s]:// in /var/www/bigbluebutton/client/conf/config.xml"
-        sed -i "s/http[s]*:\/\/\([^\"\/]*\)\([\"\/]\)/$PROTOCOL_HTTP:\/\/$HOST\2/g"  /var/www/bigbluebutton/client/conf/config.xml
+        sed -i \
+            -e "s@bigbluebutton.web.serverURL=http.*@bigbluebutton.web.serverURL=https://${HOST}@" \
+            -e "s@screenshareRtmpServer=.*@screenshareRtmpServer=${HOST}@" \
+            /usr/share/bbb-web/WEB-INF/classes/bigbluebutton.properties
 
-        echo "Assigning $HOST for publishURI in /var/www/bigbluebutton/client/conf/config.xml"
-        sed -i "s/publishURI=\"[^\"]*\"/publishURI=\"$HOST\"/" /var/www/bigbluebutton/client/conf/config.xml
-
-        sed -i "s@    <bwMon server=.*@    <bwMon server=\"${HOST}\" application=\"video/bwTest\"/>@" /var/www/bigbluebutton/client/conf/config.xml
-
-        #
-        # Update configuration for BigBlueButton web app
-        #
-        echo "Assigning $HOST for web application URL in ${SERVLET_DIR}/bigbluebutton/WEB-INF/classes/bigbluebutton.properties"
-
-        sed -i "s/bigbluebutton.web.serverURL=http[s]*:\/\/.*/bigbluebutton.web.serverURL=$PROTOCOL_HTTP:\/\/$HOST/g" \
-        	${SERVLET_DIR}/bigbluebutton/WEB-INF/classes/bigbluebutton.properties
-
-        change_var_value /usr/share/red5/webapps/screenshare/WEB-INF/screenshare.properties streamBaseUrl rtmp://$HOST/screenshare
-        change_var_value /usr/share/red5/webapps/screenshare/WEB-INF/screenshare.properties jnlpUrl $PROTOCOL_HTTP://$HOST/screenshare
-        change_var_value /usr/share/red5/webapps/screenshare/WEB-INF/screenshare.properties jnlpFile $PROTOCOL_HTTP://$HOST/screenshare/screenshare.jnlp
-
-        if ! grep -q server_names_hash_bucket_size /etc/nginx/nginx.conf; then
-        	sed -i "s/gzip  on;/gzip  on;\n    server_names_hash_bucket_size  64;/g" /etc/nginx/nginx.conf
+        if [ -f ${SERVLET_DIR}/demo/bbb_api_conf.jsp ]; then
+            sed -i "s@://\([^\"\/]*\)\([\"\/]\)@:\/\/$HOST\2@g"  \
+        		${SERVLET_DIR}/demo/bbb_api_conf.jsp
         fi
 
-        #
-        # Update bbb-apps-akka
-        #
-        echo "Assigning $HOST for web application URL in /usr/share/bbb-apps-akka/conf/application.conf"
-
-        if [ -f /usr/share/bbb-apps-akka/conf/application.conf ]; then
-          sed -i  "s/bbbWebAPI[ ]*=[ ]*\"[^\"]*\"/bbbWebAPI=\"${PROTOCOL_HTTP}:\/\/$HOST\/bigbluebutton\/api\"/g" \
-            /usr/share/bbb-apps-akka/conf/application.conf
-          sed -i "s/bbbWebHost[ ]*=[ ]*\"[^\"]*\"/bbbWebHost=\"$HOST\"/g" \
-            /usr/share/bbb-apps-akka/conf/application.conf
-          sed -i "s/deskshareip[ ]*=[ ]*\"[^\"]*\"/deskshareip=\"$HOST\"/g" \
-            /usr/share/bbb-apps-akka/conf/application.conf
-          sed -i  "s/defaultPresentationURL[ ]*=[ ]*\"[^\"]*\"/defaultPresentationURL=\"${PROTOCOL_HTTP}:\/\/$HOST\/default.pdf\"/g" \
-            /usr/share/bbb-apps-akka/conf/application.conf
-          # Fix to ensure application.conf has the latest shared secret
-          SECRET=$(cat ${SERVLET_DIR}/bigbluebutton/WEB-INF/classes/bigbluebutton.properties | grep -v '#' | grep securitySalt | cut -d= -f2);
-          sed -i "s/sharedSecret[ ]*=[ ]*\"[^\"]*\"/sharedSecret=\"$SECRET\"/g" \
-            /usr/share/bbb-apps-akka/conf/application.conf
+        if [ -f ${SERVLET_DIR}/lti/WEB-INF/classes/lti.properties ]; then
+        	sed -i \
+                -e "s@bigbluebuttonURL=http.*@bigbluebuttonURL=https://$HOST/bigbluebutton@g" \
+                -e "s@ltiEndPoint=http.*@ltiEndPoint=https://$HOST/lti/tool.xml@g" \
+        	${SERVLET_DIR}/lti/WEB-INF/classes/lti.properties
         fi
+        ## END SET IP ##
 
-        if [ -f ${SERVLET_DIR}/lti/WEB-INF/classes/lti-config.properties ]; then
-        	echo "Assigning $HOST for LTI integration in ${SERVLET_DIR}/lti/WEB-INF/classes/lti-config.properties"
-        	# We don't wat to guess on http/https as the lti endpoint may be a different BigBlueButton server
-        	sed -i "s/bigbluebuttonURL=http:\/\/.*/bigbluebuttonURL=http:\/\/$HOST\/bigbluebutton/g" \
-          	${SERVLET_DIR}/lti/WEB-INF/classes/lti-config.properties
-        	sed -i "s/bigbluebuttonURL=https:\/\/.*/bigbluebuttonURL=https:\/\/$HOST\/bigbluebutton/g" \
-          	${SERVLET_DIR}/lti/WEB-INF/classes/lti-config.properties
-        	sed -i "s/ltiEndPoint=.*/ltiEndPoint=$HOST/g" \
-          	${SERVLET_DIR}/lti/WEB-INF/classes/lti-config.properties
-        fi
-
-
-        if [ -f /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml ]; then
-        	echo "Assigning $HOST for record and playback in /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml"
-        	change_yml_value /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml playback_host ${bbb_playback_host}
-          change_yml_value /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml redis_host ${redis_host}
-        fi
-
-        if [ -f /var/www/bigbluebutton/check/conf/config.xml ]; then
-        	echo "Assigning $HOST for client self check to /var/www/bigbluebutton/check/conf/config.xml"
-        	sed -i "s/rtmp[s]*:\/\/\([^\"\/]*\)\//$PROTOCOL_RTMP:\/\/$HOST\//g" /var/www/bigbluebutton/check/conf/config.xml
-        	sed -i "s/rtmpt:\/\/\([^\"\/]*\)\//rtmpt:\/\/$HOST\//g" /var/www/bigbluebutton/check/conf/config.xml
-        fi
-
-        # Set server ip address in FreeSWITCH
-        sed -i "s@<X-PRE-PROCESS cmd=\"set\" data=\"local_ip_v4=.*\"/>@<X-PRE-PROCESS cmd=\"set\" data=\"local_ip_v4=${bbb_ip}\"/>@g"  $FREESWITCH_VARS
-
-        # Set server ip address in red5 sip app. For flash client.
-        sed -i "s/bbb.sip.app.ip=.*/bbb.sip.app.ip=${bbb_ip}/g" /usr/share/red5/webapps/sip/WEB-INF/bigbluebutton-sip.properties
-        sed -i "s/freeswitch.ip=.*/freeswitch.ip=${bbb_ip}/g" /usr/share/red5/webapps/sip/WEB-INF/bigbluebutton-sip.properties
-
-        # Enable WebRTC in the client
-        sed -i "s@useWebRTCIfAvailable=\".*\"@useWebRTCIfAvailable=\"true\"@g" /var/www/bigbluebutton/client/conf/config.xml
-
-        # Enable port 5066 in FreeSWITCH
-        sed -i 's/^.*<!--<param name="ws-binding"  value=":5066"\/>-->.*$/\t<param name="ws-binding"  value=":5066"\/>/g' $FREESWITCH_EXTERNAL
-
-        PROTOCOL=$(cat /etc/bigbluebutton/nginx/sip.nginx |  sed -n '/proxy_pass/{s/.*proxy_pass [ ]*//;s/:.*//;p}')
-        PORT=5066
-        if [[ $PROTOCOL == "https" ]]; then
-          PORT=7443
-        fi
-        sed -i "s/proxy_pass .*/proxy_pass $PROTOCOL:\/\/${bbb_ip}:$PORT;/g" /etc/bigbluebutton/nginx/sip.nginx
-        ###################### Fin de segmento de /usr/bin/bbb-conf ##################################
-
-        # Inicio de servicios
-        BBB_SERVICES="red5 tomcat7 nginx freeswitch redis-server bbb-apps-akka bbb-fsesl-akka bbb-record-core.timer libreoffice.service"
-        HTML5=""
-        WEBHOOKS=""
-        if [ -f /usr/lib/systemd/system/bbb-html5.service ]; then
-          HTML5="mongod bbb-html5"
-        fi
-        if [ -f /usr/lib/systemd/system/bbb-webhooks.service ]; then
-          WEBHOOKS=bbb-webhooks
-        fi
-        action=restart
-        systemctl $action $BBB_SERVICES $HTML5 $WEBHOOKS
-        # bbb-conf --clean
+        # start bbb
+        bbb-conf --clean
 
         # Instalar demo si es requerido
-        if ! [[ ${is_bbb_demo} == "False" ]]; then
-            DEBIAN_FRONTEND=noninteractive apt-get -y install bbb-demo bbb-check
-            if [ -f ${SERVLET_DIR}/demo/bbb_api_conf.jsp ]; then
-              sed -i "s@^String BigBlueButtonURL.*@String BigBlueButtonURL = \"https://${HOST}/bigbluebutton/\";@" ${SERVLET_DIR}/demo/bbb_api_conf.jsp
-            else
-              sleep 30
-              sed -i "s@^String BigBlueButtonURL.*@String BigBlueButtonURL = \"https://${HOST}/bigbluebutton/\";@" ${SERVLET_DIR}/demo/bbb_api_conf.jsp
-            fi
-            systemctl $action $BBB_SERVICES $HTML5 $WEBHOOKS
-            # bbb-conf --clean
+        if ! [[ -z ${is_bbb_demo:-} ]]; then
+          DEBIAN_FRONTEND=noninteractive apt-get -y install bbb-demo
+          if [ -f /var/lib/tomcat7/webapps/demo/bbb_api_conf.jsp ]; then
+            sed -i "s@^String BigBlueButtonURL.*@String BigBlueButtonURL = \"https://${HOST}/bigbluebutton/\";@" /var/lib/tomcat7/webapps/demo/bbb_api_conf.jsp
+          else
+            sleep 30
+            sed -i "s@^String BigBlueButtonURL.*@String BigBlueButtonURL = \"https://${HOST}/bigbluebutton/\";@" /var/lib/tomcat7/webapps/demo/bbb_api_conf.jsp
+          fi
+        else
+          apt-get purge -y bbb-demo
         fi
+        _EOF
+        chmod +x /usr/local/bin/bbb-heat
+
+        [ -z "${bbb_ip:-}" ] || sed -i  "/^# heat_vars/a bbb_ip='${bbb_ip}'" $script
+        [ -z "${is_bbb_demo:-}" ] || sed -i   "/^# heat_vars/a is_bbb_demo='${is_bbb_demo}'" $script
+        [ -z "${bbb_domain:-}" ] || sed -i "/^# heat_vars/a bbb_domain='${bbb_domain}'" $script
+        [ -z "${bbb_recording_hostname:-}" ] || sed -i "/^# heat_vars/a bbb_recording_hostname='${bbb_recording_hostname}'" $script
+        [ -z "${bbb_nfs_mount:-}" ] || sed -i "/^# heat_vars/a bbb_nfs_mount='${bbb_nfs_mount}'" $script
+        [ -z "${bbb_external_hostname:-}" ] || sed -i "/^# heat_vars/a bbb_external_hostname='${bbb_external_hostname}'" $script
+        [ -z "${shared_key_in:-}" ] || sed -i "/^# heat_vars/a shared_key_in='${shared_key_in}'" $script
+
+        # run bbb init script
+        # $script > /tmp/bbb-heat.log
 
         # Devolver url y llave compartida
         bbb-conf --secret | grep -i url: | awk '{print $2}' > ${heat_outputs_path}.bbb_url
@@ -362,7 +267,7 @@ resources:
     type: OS::Heat::SoftwareDeployment
     properties:
       actions: ['CREATE','UPDATE']
-      config: {get_resource: init}
+      config: {get_resource: sw-init}
       server: {get_resource: bbb-server}
       input_values:
         bbb_ip: {get_attr: [bbb-server, networks, {get_param: public_net}, 0]}
@@ -371,7 +276,6 @@ resources:
         bbb_recording_hostname: {get_param: bbb_recording_hostname}
         bbb_nfs_mount: {get_param: bbb_nfs_mount}
         bbb_external_hostname: {get_param: bbb_external_hostname}
-
 
 outputs:
   server:
