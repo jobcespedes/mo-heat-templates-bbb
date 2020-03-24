@@ -130,9 +130,9 @@ resources:
           if ! [[ -z ${bbb_recording_hostname:-} ]]; then
             echo "${bbb_ip} ${bbb_recording_hostname} #bbb para grabaciones" >> /etc/hosts
             mountpoint -q /var/bigbluebutton/published/ || mount ${bbb_nfs_mount}/var/bigbluebutton/published/ /var/bigbluebutton/published/
-            chown tomcat7:tomcat7 -R /var/bigbluebutton/published/
+            chown tomcat7:tomcat7 /var/bigbluebutton/published/
             mountpoint -q /var/bigbluebutton/unpublished/ || mount ${bbb_nfs_mount}/var/bigbluebutton/unpublished/ /var/bigbluebutton/unpublished/
-            chown tomcat7:tomcat7 -R /var/bigbluebutton/unpublished/
+            chown tomcat7:tomcat7 /var/bigbluebutton/unpublished/
             mountpoint -q /var/bigbluebutton/recording/raw/ || mount ${bbb_nfs_mount}/var/bigbluebutton/recording/raw/ /var/bigbluebutton/recording/raw/
             chown tomcat7:tomcat7 /var/bigbluebutton/recording/raw/
             mountpoint -q /etc/nginx/ssl/ || mount ${bbb_nfs_mount}/etc/nginx/ssl/ /etc/nginx/ssl/
