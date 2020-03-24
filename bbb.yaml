@@ -259,6 +259,9 @@ resources:
         # run bbb init script
         $script > /tmp/bbb-heat.log
 
+        # check status
+        bbb-conf --status | grep failed && exit 1
+
         # Devolver url y llave compartida
         bbb-conf --secret | grep -i url: | awk '{print $2}' > ${heat_outputs_path}.bbb_url
         bbb-conf --secret | grep -i secret: | awk '{print $2}' > ${heat_outputs_path}.shared_key_out
