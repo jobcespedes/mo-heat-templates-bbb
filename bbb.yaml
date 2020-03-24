@@ -257,7 +257,7 @@ resources:
         [ -z "${shared_key_in:-}" ] || sed -i "/^# heat_vars/a shared_key_in='${shared_key_in}'" $script
 
         # run bbb init script
-        # $script > /tmp/bbb-heat.log
+        $script > /tmp/bbb-heat.log
 
         # Devolver url y llave compartida
         bbb-conf --secret | grep -i url: | awk '{print $2}' > ${heat_outputs_path}.bbb_url
