@@ -198,7 +198,7 @@ resources:
             sed -i "s@^playback_host:.*@playback_host: ${bbb_playback_host}@g" /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml
         fi
 
-        sed -i "s@server_name.*@server_name ${HOST};@g" \
+        sed -i "s@server_name .*@server_name ${HOST};@g" \
             /etc/nginx/sites-available/bigbluebutton
 
         sed -i "s@proxy_pass http.*@proxy_pass https://${IP}:7443;@g" \
